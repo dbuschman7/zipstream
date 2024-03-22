@@ -8,16 +8,29 @@ import (
 	"net/http"
 	"os"
 	"testing"
+
+	hu "github.com/dustin/go-humanize"
+
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
 )
 
+var file22 = "https://github.com/golang/go/archive/refs/tags/go1.22.1.zip"
+var file16 = "https://github.com/golang/go/archive/refs/tags/go1.16.10.zip"
+
 func TestStreamReader(t *testing.T) {
-	resp, err := http.Get("https://github.com/golang/go/archive/refs/tags/go1.16.10.zip")
+	resp, err := http.Get(file22)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer resp.Body.Close()
 
 	zr := NewReader(resp.Body)
+
+	var totalFileCount int64
+	var totalFileSize uint64
+	var compressedSize uint64
 
 	for {
 		e, err := zr.GetNextEntry()
@@ -28,13 +41,9 @@ func TestStreamReader(t *testing.T) {
 			log.Fatalf("unable to get next entry: %s", err)
 		}
 
-		log.Println("entry name: ", e.Name)
-		log.Println("entry comment: ", e.Comment)
-		log.Println("entry reader version: ", e.ReaderVersion)
-		log.Println("entry modify time: ", e.Modified)
-		log.Println("entry compressed size: ", e.CompressedSize64)
-		log.Println("entry uncompressed size: ", e.UncompressedSize64)
-		log.Println("entry is a dir: ", e.IsDir())
+		hash256 := sha256.New()
+		hash1 := sha1.New()
+		hashmd5 := md5.New()
 
 		if !e.IsDir() {
 			rc, err := e.Open()
@@ -48,14 +57,28 @@ func TestStreamReader(t *testing.T) {
 
 			log.Println("file length:", len(content))
 
+			totalFileCount++
+			totalFileSize += uint64(len(content))
+			compressedSize += e.CompressedSize64
+
+			hash256.Write(content)
+			hash1.Write(content)
+			hashmd5.Write(content)
+
 			if uint64(len(content)) != e.UncompressedSize64 {
 				log.Fatalf("read zip file length not equal with UncompressedSize64")
 			}
 			if err := rc.Close(); err != nil {
 				log.Fatalf("close zip entry reader fail: %s", err)
 			}
+
+			log.Printf("entry name: %s, modify time: %v, compressed size: %d, uncompressed size: %d, crc32: %d, method: %d, flags: %d, extra: %s sha256: %x, sha1: %x, md5: %x\n",
+				e.Name, e.Modified.UTC().UnixMilli(), e.CompressedSize64, e.UncompressedSize64, e.CRC32, e.Method, e.Flags, e.Extra, hash256.Sum(nil), hash1.Sum(nil), hashmd5.Sum(nil))
 		}
+
 	}
+
+	log.Printf("total file count: %s, compressed: %s uncompressed: %s\n", hu.Comma(totalFileCount), hu.Bytes(compressedSize), hu.Bytes(totalFileSize))
 }
 
 func TestNewReader(t *testing.T) {
