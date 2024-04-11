@@ -1,3 +1,11 @@
+# NIX setup 
+
+```shell 
+nix-shell
+go test
+```
+
+
 # zipstream
 Package zipstream is a stream on the fly extractor/reader for zip archive like Java's `java.util.zip.ZipInputStream`, there is no need to provide `io.ReaderAt` and total archive size parameters, that is, just need only one `io.Reader` parameter.
 
